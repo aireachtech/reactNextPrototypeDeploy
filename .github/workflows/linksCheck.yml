@@ -1,31 +1,47 @@
-name: Links Check
-
-on:
-  repository_dispatch:
+name: Site Reliability
+on: 
   workflow_dispatch:
+  push:
+    branches: 
+      - master
   schedule:
-    - cron: "00 08 * * *"
-
+    # * is a special character in YAML so you have to quote this string
+    - cron:  '0 4 * * *'
 jobs:
-  linkChecker:
+  crawl_for_broken_links:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
+    name: Broken-Links-Crawler
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Link Checker
-        id: lychee
-        uses: lycheeverse/lychee-action@v2
+    - name: Debug Action
+      uses: hmarr/debug-action@v1.0.0
+    - name: Checking links
+      id: checking
+      uses: ScholliYT/Broken-Links-Crawler-Action@v3
+      with:
+        website_url: 'https://tomstein.me'
+        exclude_url_prefix: 'mailto:,https://www.linkedin.com,https://linkedin.com,https://twitter.com'
+        verbose: 'true'
+        max_retry_time: 30
+        max_retries: 5
+  
+  send-email:
+    needs: crawl_for_broken_links
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download broken links report
+        uses: actions/download-artifact@v4
         with:
-          fail: false
-        env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          name: broken-links-report
 
-      - name: Create Issue From File
-        if: steps.lychee.outputs.exit_code != 0
-        uses: peter-evans/create-issue-from-file@v5
+      - name: Send email with report
+        uses: dawidd6/action-send-mail@v3
         with:
-          title: Link Checker Report
-          content-filepath: ./lychee/out.md
-          labels: report, automated issue
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "Broken Links Report"
+          body: "Please find the attached broken links report."
+          to: sumeet@techbytesfoundation.org
+          from: sumeet@techbytesfoundation.org
+          attachments: broken-links.txt
